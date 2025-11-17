@@ -1,111 +1,108 @@
-Преимущества этого подхода:
+The advantages of this approach:
 
-Пошаговое тестирование - каждый запрос можно запустить отдельно
+Step-by-step testing - each request can be run separately
 
-Автоматическое сохранение токенов в переменные
+Automatic saving of tokens into variables
 
-Проверка всех сценариев - успешные и ошибочные кейсы
+Testing of all scenarios - success and failure cases
 
-Валидация ответов с помощью JavaScript assertions
+Response validation using JavaScript assertions
 
-Логирование процесса тестирования
+Test process logging
 
-Использование тестовых данных из миграции и создание новых
+Using test data from migrations and creating new ones
 
 JWT Authentication with Spring Boot 3 and Spring Security 6
 
-Проект демонстрирует реализацию JWT-аутентификации с использованием Spring Boot 3, Spring Security 6, PostgreSQL и Flyway.
-Технологии
+This project demonstrates the implementation of JWT authentication using Spring Boot 3, Spring Security 6, PostgreSQL, and Flyway. Technologies
 
-    Java 21
+Java 21
 
-    Spring Boot 3.2.0
+Spring Boot 3.2.0
 
-    Spring Security 6
+Spring Security 6
 
-    PostgreSQL - база данных
+PostgreSQL - database
 
-    Flyway - миграции базы данных
+Flyway - database migrations
 
-    JWT - JSON Web Tokens для аутентификации
+JWT - JSON Web Tokens for authentication
 
-    Maven - управление зависимостями
+Maven - dependency management
 
-    SpringDoc OpenAPI - документация API
+SpringDoc OpenAPI - API documentation
 
- Функциональность
+Functionality
 
-Регистрация новых пользователей
+New user registration
 
-WT аутентификация и авторизация
+WT authentication and authorization
 
-Ролевая модель (USER/ADMIN)
+Role model (USER/ADMIN)
 
-Защищенные эндпоинты
+Secure endpoints
 
-Валидация данных
+Data validation
 
-Swagger документация
+Swagger documentation
 
-Автоматические миграции базы данных
-
-Быстрый старт
-1. Запуск базы данных
+Automated database migrations
+Quick Start
+1. Starting the Database
    bash
 
 docker-compose up -d
 
-2. Запуск приложения
+2. Starting the Application
    bash
 
 mvn spring-boot:run
 
-3. Документация API
+3. API Documentation
 
-Откройте в браузере: http://localhost:8080/swagger-ui/index.html
+Open in a browser: http://localhost:8080/swagger-ui/index.html
 API Endpoints
-Аутентификация
-Метод	Endpoint	Описание	Доступ
-POST	/auth/sign-up	Регистрация пользователя	Public
-POST	/auth/sign-in	Авторизация пользователя	Public
-Примеры эндпоинтов
-Метод	Endpoint	Описание	Доступ
-GET	/example	Пример защищенного эндпоинта	Authenticated
-GET	/example/admin	Пример админского эндпоинта	ROLE_ADMIN
-GET	/example/get-admin	Получить права ADMIN	Authenticated
-Тестовые пользователи
+Authentication
+Method Endpoint Description Access
+POST /auth/sign-up User registration Public
+POST /auth/sign-in User authorization Public
+Example Endpoints
+Method Endpoint Description Access
+GET /example Example of a secure endpoint Authenticated
+GET /example/admin Example of an admin endpoint ROLE_ADMIN
+GET /example/get-admin Get ADMIN Authenticated privileges
+Test Users
 
-После запуска миграций создаются тестовые пользователи:
-Администраторы:
+After running migrations, test users are created:
+Administrators:
 
-    admin / admin123 (изначальный админ)
+admin / admin123 (initial) Admin)
 
-Обычные пользователи:
+Regular users:
 
-    user1 / user123
+user1 / user123
 
-    user2 / user123
+user2 / user123
 
-    testuser / user123
+testuser / user123
 
-Тестирование
-Способ 1: Swagger UI
+Testing
+Method 1: Swagger UI
 
-    Откройте http://localhost:8080/swagger-ui/index.html
+Open http://localhost:8080/swagger-ui/index.html
 
-    Используйте интерфейс для тестирования API
+Use the interface to test the API
 
-Способ 2: HTTP Client (IntelliJ IDEA)
+Method 2: HTTP Client (IntelliJ IDEA)
 
-Запустите тесты из файлов:
+Run tests from the files:
 
-    http-requests.http - базовые тесты
+http-requests.http - basic tests
 
-    http-admin-tests.http - тесты администраторов
+http-admin-tests.http - admin tests
 
-
-Конфигурация
-Основные настройки (application-dev.yml)
+Configuration
+Basic settings (application-dev.yml)
 yaml
 
 server:
@@ -138,31 +135,29 @@ POSTGRES_PASSWORD: 1234567
 ports:
 - "5432:5432"
 
+Database Migrations
 
-Миграции базы данных
+V1__Create_users_table.sql - Create a user table
 
-    V1__Create_users_table.sql - создание таблицы пользователей
+V2__Insert_test_data.sql - Test data
 
-    V2__Insert_test_data.sql - тестовые данные
+Security
+JWT Token
 
-Безопасность
-JWT Токен
+The token contains:
 
-Токен содержит:
+User ID
 
-    Идентификатор пользователя
+Email
 
-    Email
+Role
 
-    Роль
+Creation time and expiration
 
-    Время создания и expiration
+Endpoint Security
 
-Защита эндпоинтов
+permitAll() - Public access
 
-    permitAll() - публичный доступ
+authenticated() - For authorized users
 
-    authenticated() - для авторизованных пользователей
-
-    hasRole('ADMIN') - только для администраторов
-
+hasRole('ADMIN') - for administrators only
