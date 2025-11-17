@@ -1,0 +1,275 @@
+### 1. РЕГИСТРАЦИЯ НОВОГО ПОЛЬЗОВАТЕЛЯ
+POST http://localhost:8080/auth/sign-up
+Content-Type: application/json
+
+{
+  "username": "ivanov",
+  "email": "ivanov@mail.ru",
+  "password": "password123"
+}
+
+> {%
+    client.test("1. Регистрация успешна", function() {
+        client.assert(response.status === 200, "Ожидался статус 200");
+        client.assert(response.body.token, "Токен не получен");
+        client.log("✅ Регистрация успешна. Токен получен");
+        client.global.set("user_token", response.body.token);
+    });
+%}
+
+### 2. ПРОВЕРКА ДУБЛИРОВАНИЯ ПОЛЬЗОВАТЕЛЯ
+POST http://localhost:8080/auth/sign-up
+Content-Type: application/json
+
+{
+  "username": "ivanov",
+  "email": "ivanov2@mail.ru",
+  "password": "password123"
+}
+
+> {%
+    client.test("2. Дублирование пользователя запрещено", function() {
+        client.assert(response.status === 403, "Ожидалась ошибка 403 при дублировании");
+        client.log("✅ Дублирование username корректно запрещено");
+    });
+%}
+
+### 3. ДУБЛИРОВАНИЕ EMAIL
+POST http://localhost:8080/auth/sign-up
+Content-Type: application/json
+
+{
+  "username": "ivanov2",
+  "email": "ivanov@mail.ru",
+  "password": "password123"
+}
+
+> {%
+    client.test("3. Дублирование email запрещено", function() {
+        client.assert(response.status === 403, "Ожидалась ошибка 403 при дублировании email");
+        client.log("✅ Дублирование email корректно запрещено");
+    });
+%}
+
+### 4. АВТОРИЗАЦИЯ ПОЛЬЗОВАТЕЛЯ
+POST http://localhost:8080/auth/sign-in
+Content-Type: application/json
+
+{
+  "username": "ivanov",
+  "password": "password123"
+}
+
+> {%
+    client.test("4. Авторизация успешна", function() {
+        client.assert(response.status === 200, "Ожидался статус 200");
+        client.assert(response.body.token, "Токен не получен при авторизации");
+        client.log("✅ Авторизация успешна");
+        client.global.set("user_token", response.body.token);
+    });
+%}
+
+### 5. НЕВЕРНЫЙ ПАРОЛЬ
+POST http://localhost:8080/auth/sign-in
+Content-Type: application/json
+
+{
+  "username": "ivanov",
+  "password": "wrongpassword"
+}
+
+> {%
+    client.test("5. Неверный пароль отклонен", function() {
+        client.assert(response.status === 403, "Ожидалась ошибка 403 при неверном пароле");
+        client.log("✅ Неверный пароль корректно отклонен");
+    });
+%}
+
+### 6. ДОСТУП К ЗАЩИЩЕННОМУ ENDPOINT (с токеном)
+GET http://localhost:8080/example
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("6. Доступ к защищенному endpoint с токеном", function() {
+        client.assert(response.status === 200, "Ожидался статус 200 с валидным токеном");
+        client.assert(response.body === "Hello, world!", "Неверный ответ от сервера");
+        client.log("✅ Защищенный endpoint доступен с токеном");
+    });
+%}
+
+### 7. ДОСТУП БЕЗ ТОКЕНА (должна быть ошибка)
+GET http://localhost:8080/example
+
+> {%
+    client.test("7. Доступ без токена запрещен", function() {
+        client.assert(response.status === 403, "Ожидалась ошибка 403 без токена");
+        client.log("✅ Доступ без токена корректно запрещен");
+    });
+%}
+
+### 8. ДОСТУП К АДМИНСКОМУ ENDPOINT (без прав)
+GET http://localhost:8080/example/admin
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("8. Админский endpoint запрещен для обычного пользователя", function() {
+        client.assert(response.status === 403, "Ожидалась ошибка 403 без прав ADMIN");
+        client.log("✅ Админский endpoint корректно запрещен для USER");
+    });
+%}
+
+### 9. ПОЛУЧЕНИЕ ПРАВ АДМИНА
+GET http://localhost:8080/example/get-admin
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("9. Получение прав ADMIN", function() {
+        client.assert(response.status === 200, "Не удалось получить права ADMIN");
+        client.log("✅ Права ADMIN успешно получены");
+    });
+%}
+
+### 10. ПОВТОРНЫЙ ДОСТУП К АДМИНСКОМУ ENDPOINT (после получения прав)
+GET http://localhost:8080/example/admin
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("10. Админский endpoint доступен после получения прав", function() {
+        client.assert(response.status === 200, "Админский endpoint все еще недоступен");
+        client.assert(response.body === "Hello, admin!", "Неверный ответ от админского endpoint");
+        client.log("✅ Админский endpoint теперь доступен");
+    });
+%}
+
+### 11. ТЕСТИРОВАНИЕ С ТЕСТОВЫМИ ДАННЫМИ ИЗ MIGRATION
+
+### 11.1 АВТОРИЗАЦИЯ АДМИНА
+POST http://localhost:8080/auth/sign-in
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+> {%
+    client.test("11.1 Авторизация админа", function() {
+        client.assert(response.status === 200, "Авторизация админа не удалась");
+        client.global.set("admin_token", response.body.token);
+        client.log("✅ Авторизация админа успешна");
+    });
+%}
+
+### 11.2 АДМИНСКИЙ ENDPOINT С АДМИНОМ
+GET http://localhost:8080/example/admin
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("11.2 Админский endpoint с изначальным админом", function() {
+        client.assert(response.status === 200, "Админ не может доступть админский endpoint");
+        client.log("✅ Админский endpoint доступен изначальному админу");
+    });
+%}
+
+### 11.3 АВТОРИЗАЦИЯ ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ИЗ MIGRATION
+POST http://localhost:8080/auth/sign-in
+Content-Type: application/json
+
+{
+  "username": "user1",
+  "password": "user123"
+}
+
+> {%
+    client.test("11.3 Авторизация user1 из миграции", function() {
+        client.assert(response.status === 200, "Авторизация user1 не удалась");
+        client.global.set("user1_token", response.body.token);
+        client.log("✅ Авторизация user1 успешна");
+    });
+%}
+
+### 12. ВАЛИДАЦИЯ ДАННЫХ
+
+### 12.1 СЛИШКОМ КОРОТКОЕ ИМЯ ПОЛЬЗОВАТЕЛЯ
+POST http://localhost:8080/auth/sign-up
+Content-Type: application/json
+
+{
+  "username": "abc",
+  "email": "short@mail.ru",
+  "password": "password123"
+}
+
+> {%
+    client.test("12.1 Валидация: короткое имя пользователя", function() {
+        client.assert(response.status === 400, "Ожидалась ошибка валидации");
+        client.log("✅ Валидация короткого имени работает");
+    });
+%}
+
+### 12.2 НЕВАЛИДНЫЙ EMAIL
+POST http://localhost:8080/auth/sign-up
+Content-Type: application/json
+
+{
+  "username": "validuser",
+  "email": "invalid-email",
+  "password": "password123"
+}
+
+> {%
+    client.test("12.2 Валидация: невалидный email", function() {
+        client.assert(response.status === 400, "Ожидалась ошибка валидации email");
+        client.log("✅ Валидация email работает");
+    });
+%}
+
+### 13. ПРОВЕРКА SWAGGER DOCUMENTATION
+GET http://localhost:8080/v3/api-docs
+
+> {%
+    client.test("13. Swagger documentation доступна", function() {
+        client.assert(response.status === 200, "Swagger docs недоступны");
+        client.log("✅ Swagger documentation доступна");
+    });
+%}
+
+### 14. ПРОВЕРКА НЕСУЩЕСТВУЮЩЕГО ENDPOINT
+GET http://localhost:8080/non-existent-endpoint
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("14. Несуществующий endpoint возвращает 404", function() {
+        client.assert(response.status === 404, "Ожидалась ошибка 404");
+        client.log("✅ Несуществующий endpoint корректно обрабатывается");
+    });
+%}
+
+### 15. ФИНАЛЬНЫЙ ТЕСТ - СОЗДАНИЕ И ТЕСТИРОВАНИЕ НОВОГО ПОЛЬЗОВАТЕЛЯ
+POST http://localhost:8080/auth/sign-up
+Content-Type: application/json
+
+{
+  "username": "petrov",
+  "email": "petrov@yandex.ru",
+  "password": "petrov123"
+}
+
+> {%
+    client.test("15.1 Финальная регистрация", function() {
+        client.assert(response.status === 200, "Финальная регистрация не удалась");
+        client.global.set("final_token", response.body.token);
+        client.log("✅ Финальная регистрация успешна");
+    });
+%}
+
+### 15.2 ТЕСТИРОВАНИЕ НОВОГО ПОЛЬЗОВАТЕЛЯ
+GET http://localhost:8080/example
+Authorization: Bearer {{final_token}}
+
+> {%
+    client.test("15.2 Финальный тест защищенного endpoint", function() {
+        client.assert(response.status === 200, "Финальный тест не прошел");
+        client.log("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!");
+    });
+%}
