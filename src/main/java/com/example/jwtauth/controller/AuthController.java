@@ -3,7 +3,6 @@ package com.example.jwtauth.controller;
 import com.example.jwtauth.dto.JwtAuthenticationResponse;
 import com.example.jwtauth.dto.SignInRequest;
 import com.example.jwtauth.dto.SignUpRequest;
-import com.example.jwtauth.service.AuthenticationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Аутентификация")
 public class AuthController {
 
-    private final AuthenticationService authenticationService;
+    private final com.example.jwtauth.service.AuthenticationService authenticationService;
 
     @Operation(summary = "Регистрация пользователя")
     @PostMapping("/sign-up")

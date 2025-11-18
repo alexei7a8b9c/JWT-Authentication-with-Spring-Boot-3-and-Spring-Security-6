@@ -9,30 +9,33 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 @RestController
-@RequestMapping("/example")
+@RequestMapping("/api/example")
 @RequiredArgsConstructor
-@Tag(name = "Примеры")
+@Tag(name = "Примеры API")
 public class ExampleController {
 
     private final UserService service;
 
     @GetMapping
     @Operation(summary = "Доступен только авторизованным пользователям")
-    public String example() {
-        return "Hello, world!";
+    public Map<String, String> example() {
+        return Map.of("message", "Hello, world!", "access", "authenticated");
     }
 
     @GetMapping("/admin")
     @Operation(summary = "Доступен только авторизованным пользователям с ролью ADMIN")
     @PreAuthorize("hasRole('ADMIN')")
-    public String exampleAdmin() {
-        return "Hello, admin!";
+    public Map<String, String> exampleAdmin() {
+        return Map.of("message", "Hello, admin!", "access", "admin");
     }
 
     @GetMapping("/get-admin")
     @Operation(summary = "Получить роль ADMIN (для демонстрации)")
-    public void getAdmin() {
+    public Map<String, String> getAdmin() {
         service.getAdmin();
+        return Map.of("message", "Admin role granted! Refresh page and try admin endpoint.");
     }
 }

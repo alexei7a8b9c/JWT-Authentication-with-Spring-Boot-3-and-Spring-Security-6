@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд - JWT Auth Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .token-display {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+        }
+        .copy-btn {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .copy-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="/">JWT Auth Demo</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/">Главная</a>
+            <a class="nav-link active" href="/dashboard">Дашборд</a>
+            <a class="nav-link" href="/admin">Админка</a>
+            <form action="/auth/logout" method="post" style="display: inline;">
+                <button type="submit" class="nav-link btn btn-link text-light text-decoration-none"
+                        style="border: none; background: none; padding: 0.5rem 1rem;">
+                    Выйти
+                </button>
+            </form>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Панель управления</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-success">
+                        <h5>Добро пожаловать, <span th:text="${username}">Пользователь</span>!</h5>
+                        <p>Вы успешно авторизованы в системе.</p>
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5>Тестирование API</h5>
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-primary" onclick="testProtectedEndpoint()">
+                                            Тест защищенного эндпоинта
+                                        </button>
+                                        <button class="btn btn-warning" onclick="testAdminEndpoint()">
+                                            Тест админ эндпоинта
+                                        </button>
+                                        <button class="btn btn-info" onclick="getAdminRole()">
+                                            Получить роль ADMIN
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5>Информация о токене</h5>
+
+                                    <div class="mb-3">
+                                        <label class="form-label"><strong>JWT Токен:</strong></label>
+                                        <div class="token-display" id="tokenDisplay" th:text="${token}">
+                                            <!-- Токен будет здесь -->
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-outline-primary btn-sm copy-btn" onclick="copyToken()">
+                                                📋 Копировать токен
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="toggleTokenVisibility()">
+                                                👁️ Показать/Скрыть
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label"><strong>Информация о токене:</strong></label>
+                                        <ul class="list-unstyled small">
+                                            <li>👤 <strong>Пользователь:</strong> <span th:text="${username}"></span></li>
+                                            <li>📏 <strong>Длина токена:</strong> <span th:text="${token != null ? token.length() : 0}"></span> символов</li>
+                                            <li>⏰ <strong>Срок действия:</strong> 24 часа</li>
+                                        </ul>
+                                    </div>
+
+                                    <div class="alert alert-info small">
+                                        <strong>💡 Подсказка:</strong> Этот JWT токен используется для доступа к защищенным API эндпоинтам.
+                                        Он автоматически отправляется в заголовке Authorization при запросах.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <h5>Результаты тестирования:</h5>
+                        <div id="apiResults"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let tokenVisible = true;
+
+    // Копирование токена в буфер обмена
+    function copyToken() {
+        const tokenElement = document.getElementById('tokenDisplay');
+        const token = tokenElement.textContent;
+
+        navigator.clipboard.writeText(token).then(() => {
+            // Временное изменение текста кнопки
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Скопировано!';
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-success');
+
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-primary');
+            }, 2000);
+        }).catch(err => {
+            console.error('Ошибка копирования: ', err);
+            alert('Не удалось скопировать токен');
+        });
+    }
+
+    // Переключение видимости токена
+    function toggleTokenVisibility() {
+        const tokenElement = document.getElementById('tokenDisplay');
+        const btn = event.target;
+
+        if (tokenVisible) {
+            tokenElement.textContent = '•'.repeat(50) + ' (скрыто)';
+            btn.textContent = '👁️ Показать токен';
+        } else {
+            tokenElement.textContent = document.getElementById('tokenDisplay').getAttribute('data-original') || tokenElement.textContent;
+            btn.textContent = '👁️ Скрыть токен';
+        }
+        tokenVisible = !tokenVisible;
+    }
+
+    // Сохраняем оригинальный токен при загрузке
+    document.addEventListener('DOMContentLoaded', function() {
+        const tokenElement = document.getElementById('tokenDisplay');
+        tokenElement.setAttribute('data-original', tokenElement.textContent);
+    });
+
+    // Функции для тестирования API
+    function getTokenFromCookie() {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; token=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return null;
+    }
+
+    async function makeAuthenticatedRequest(url, method = 'GET') {
+        const token = getTokenFromCookie();
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Authorization': token ? `Bearer ${token}` : '',
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ошибка! статус: ${response.status}`);
+        }
+
+        return await response.text();
+    }
+
+    function testProtectedEndpoint() {
+        document.getElementById('apiResults').innerHTML =
+            '<div class="alert alert-info">🔄 Тестирование защищенного эндпоинта...</div>';
+
+        makeAuthenticatedRequest('/api/example')
+            .then(data => {
+                document.getElementById('apiResults').innerHTML =
+                    '<div class="alert alert-success">✅ Успешно!<br>' + data + '</div>';
+            })
+            .catch(error => {
+                document.getElementById('apiResults').innerHTML =
+                    '<div class="alert alert-danger">❌ Ошибка: ' + error.message + '</div>';
+            });
+    }
+
+    function testAdminEndpoint() {
+        document.getElementById('apiResults').innerHTML =
+            '<div class="alert alert-info">🔄 Тестирование админ эндпоинта...</div>';
+
+        makeAuthenticatedRequest('/api/example/admin')
+            .then(data => {
+                document.getElementById('apiResults').innerHTML =
+                    '<div class="alert alert-success">✅ Успешно!<br>' + data + '</div>';
+            })
+            .catch(error => {
+                document.getElementById('apiResults').innerHTML =
+                    '<div class="alert alert-danger">❌ Ошибка: ' + error.message +
+                    '<br><small>Возможно, у вас нет прав ADMIN</small></div>';
+            });
+    }
+
+    function getAdminRole() {
+        document.getElementById('apiResults').innerHTML =
+            '<div class="alert alert-info">🔄 Получение прав ADMIN...</div>';
+
+        makeAuthenticatedRequest('/api/example/get-admin')
+            .then(data => {
+                document.getElementById('apiResults').innerHTML =
+                    '<div class="alert alert-info">ℹ️ ' + data +
+                    '<br><small>Обновите страницу и попробуйте админ эндпоинт снова</small></div>';
+            })
+            .catch(error => {
+                document.getElementById('apiResults').innerHTML =
+                    '<div class="alert alert-danger">❌ Ошибка: ' + error.message + '</div>';
+            });
+    }
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

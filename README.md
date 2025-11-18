@@ -1,163 +1,106 @@
-The advantages of this approach:
+JWT Auth Spring Boot
 
-Step-by-step testing - each request can be run separately
+🔐 Система аутентификации и авторизации на Spring Boot 3 с JWT токенами
+🚀 Краткое описание
 
-Automatic saving of tokens into variables
+Простая и эффективная система безопасности для веб-приложений, реализующая:
 
-Testing of all scenarios - success and failure cases
+    JWT-аутентификацию с access-токенами
 
-Response validation using JavaScript assertions
+    Ролевую модель (USER/ADMIN)
 
-Test process logging
+    Защиту эндпоинтов на основе ролей
 
-Using test data from migrations and creating new ones
+    Автоматическую валидацию токенов
 
-JWT Authentication with Spring Boot 3 and Spring Security 6
+⚡ Как это работает
+1. 📝 Регистрация
+   http
 
-This project demonstrates the implementation of JWT authentication using Spring Boot 3, Spring Security 6, PostgreSQL, and Flyway. Technologies
+POST /auth/sign-up
+{
+"username": "user",
+"email": "user@mail.com",
+"password": "password123"
+}
 
-Java 21
+→ Возвращает JWT токен
+2. 🔐 Авторизация
+   http
 
-Spring Boot 3.2.0
+POST /auth/sign-in
+{
+"username": "user",
+"password": "password123"
+}
 
-Spring Security 6
+→ Возвращает JWT токен
+3. 🛡️ Доступ к защищенным ресурсам
+   http
 
-PostgreSQL - database
+GET /example
+Authorization: Bearer ваш_jwt_токен
 
-Flyway - database migrations
+→ "Hello, world!" (для авторизованных)
+http
 
-JWT - JSON Web Tokens for authentication
+GET /example/admin  
+Authorization: Bearer ваш_jwt_токен
 
-Maven - dependency management
+→ "Hello, admin!" (только для ADMIN)
+🏗️ Архитектура
+text
 
-SpringDoc OpenAPI - API documentation
+Клиент → JWT Filter → Security Config → Controllers → Services → Database
 
-Functionality
+🛠️ Технологии
 
-New user registration
+    Spring Boot 3 + Spring Security 6
 
-WT authentication and authorization
+    JWT (JSON Web Tokens)
 
-Role model (USER/ADMIN)
+    PostgreSQL + Flyway (миграции)
 
-Secure endpoints
+    Java 21
 
-Data validation
+    Swagger (документация API)
 
-Swagger documentation
+🎯 Быстрый старт
+bash
 
-Automated database migrations
-Quick Start
-1. Starting the Database
-   bash
-
+# 1. Запустить базу данных
 docker-compose up -d
 
-2. Starting the Application
-   bash
-
+# 2. Запустить приложение
 mvn spring-boot:run
 
-3. API Documentation
+# 3. Открыть документацию
+http://localhost:8080/swagger-ui/index.html
 
-Open in a browser: http://localhost:8080/swagger-ui/index.html
-API Endpoints
-Authentication
-Method Endpoint Description Access
-POST /auth/sign-up User registration Public
-POST /auth/sign-in User authorization Public
-Example Endpoints
-Method Endpoint Description Access
-GET /example Example of a secure endpoint Authenticated
-GET /example/admin Example of an admin endpoint ROLE_ADMIN
-GET /example/get-admin Get ADMIN Authenticated privileges
-Test Users
+📊 Тестирование
 
-After running migrations, test users are created:
-Administrators:
+Используйте готовые тесты в http-requests.http или Swagger UI для проверки:
 
-admin / admin123 (initial) Admin)
+    ✅ Регистрация и авторизация
 
-Regular users:
+    ✅ Доступ к защищенным эндпоинтам
 
-user1 / user123
+    ✅ Ролевое разграничение прав
 
-user2 / user123
+    ✅ Валидация токенов
 
-testuser / user123
+Преимущества этого подхода:
 
-Testing
-Method 1: Swagger UI
+    ✅ Пошаговое тестирование - каждый запрос можно запустить отдельно
 
-Open http://localhost:8080/swagger-ui/index.html
+    ✅ Автоматическое сохранение токенов в переменные
 
-Use the interface to test the API
+    ✅ Проверка всех сценариев - успешные и ошибочные кейсы
 
-Method 2: HTTP Client (IntelliJ IDEA)
+    ✅ Валидация ответов с помощью JavaScript assertions
 
-Run tests from the files:
+    ✅ Логирование процесса тестирования
 
-http-requests.http - basic tests
+    ✅ Использование тестовых данных из миграции и создание новых
 
-http-admin-tests.http - admin tests
-
-Configuration
-Basic settings (application-dev.yml)
-yaml
-
-server:
-port: 8080
-
-spring:
-datasource:
-url: jdbc:postgresql://localhost:5432/jwt_auth
-username: pos
-password: 1234567
-
-flyway:
-enabled: true
-locations: classpath:db/migration
-
-token:
-signing:
-key: "your-secret-key-here"
-
-Docker Compose
-yaml
-
-services:
-postgres:
-image: postgres:15
-environment:
-POSTGRES_DB: jwt_auth
-POSTGRES_USER: pos
-POSTGRES_PASSWORD: 1234567
-ports:
-- "5432:5432"
-
-Database Migrations
-
-V1__Create_users_table.sql - Create a user table
-
-V2__Insert_test_data.sql - Test data
-
-Security
-JWT Token
-
-The token contains:
-
-User ID
-
-Email
-
-Role
-
-Creation time and expiration
-
-Endpoint Security
-
-permitAll() - Public access
-
-authenticated() - For authorized users
-
-hasRole('ADMIN') - for administrators only
+Идеально для: быстрого старта проектов, микросервисов, API бэкендов с системой безопасности.
