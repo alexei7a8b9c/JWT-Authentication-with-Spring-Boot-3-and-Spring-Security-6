@@ -45,7 +45,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        String jwt = extractTokenFromCookie(request);
+        String jwt = extractTokenFromHeader(request);
+
+        if (StringUtils.isEmpty(jwt)) {
+            jwt = extractTokenFromCookie(request);
+        }
 
         if (StringUtils.isEmpty(jwt)) {
             log.warn("No JWT token found for protected endpoint: {}", requestPath);
@@ -62,7 +66,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String username = null;
         try {
-            username = jwtService.extractUserName(jwt);
+            if (!jwtService.validateAccessToken(jwt)) {
+                log.warn("Invalid access token for: {}", requestPath);
+                handleUnauthorized(request, response, "Invalid access token");
+                return;
+            }
+            username = jwtService.extractUserNameFromAccessToken(jwt);
         } catch (Exception e) {
             log.warn("Invalid JWT token for: {}", requestPath);
             deleteTokenCookie(response);
@@ -78,25 +87,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         .userDetailsService()
                         .loadUserByUsername(username);
 
-                if (jwtService.isTokenValid(jwt, userDetails)) {
-                    SecurityContext context = SecurityContextHolder.createEmptyContext();
+                SecurityContext context = SecurityContextHolder.createEmptyContext();
 
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities()
-                    );
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
+                );
 
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    context.setAuthentication(authToken);
-                    SecurityContextHolder.setContext(context);
-                    log.debug("✅ Authenticated user: {} for: {}", username, requestPath);
-                } else {
-                    log.warn("Token expired for user: {}", username);
-                    deleteTokenCookie(response);
-                    handleUnauthorized(request, response, "Token expired");
-                    return;
-                }
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                context.setAuthentication(authToken);
+                SecurityContextHolder.setContext(context);
+                log.debug("✅ Authenticated user: {} for: {}", username, requestPath);
+
             } catch (Exception e) {
                 log.warn("Authentication failed for user: {}", username);
                 deleteTokenCookie(response);
@@ -108,10 +111,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    private String extractTokenFromHeader(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (StringUtils.isNotEmpty(authHeader) && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
+    }
+
     private String extractTokenFromCookie(HttpServletRequest request) {
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
-                if ("token".equals(cookie.getName())) {
+                if ("accessToken".equals(cookie.getName())) {
                     String token = cookie.getValue();
                     log.debug("Found token in cookie, length: {}", token.length());
                     return token;
@@ -122,7 +133,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private void deleteTokenCookie(HttpServletResponse response) {
-        Cookie cookie = new Cookie("token", "");
+        Cookie cookie = new Cookie("accessToken", "");
         cookie.setPath("/");
         cookie.setMaxAge(0);
         response.addCookie(cookie);
@@ -134,6 +145,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (requestPath.startsWith("/api/")) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Unauthorized\", \"reason\": \"" + reason + "\"}");
         } else {
             log.info("Redirecting to login from: {} - Reason: {}", requestPath, reason);

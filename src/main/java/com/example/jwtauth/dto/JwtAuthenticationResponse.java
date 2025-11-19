@@ -10,9 +10,21 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Ответ c токеном доступа")
+@Schema(description = "Ответ c токенами доступа")
 public class JwtAuthenticationResponse {
 
-    @Schema(description = "Токен доступа", example = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTYxMjM5OTI4MH0.E5M6qL1sZzJ3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3J3")
-    private String token;
+    @Schema(description = "Тип токена", example = "Bearer")
+    private final String type = "Bearer";
+
+    @Schema(description = "Access токен", example = "eyJhbGciOiJIUzUxMiJ9...")
+    private String accessToken;
+
+    @Schema(description = "Refresh токен", example = "eyJhbGciOiJIUzUxMiJ9...")
+    private String refreshToken;
+
+    @Schema(description = "Время жизни access токена в секундах", example = "300")
+    private Long accessTokenExpiresIn;
+
+    @Schema(description = "Время жизни refresh токена в секундах", example = "2592000")
+    private Long refreshTokenExpiresIn;
 }
