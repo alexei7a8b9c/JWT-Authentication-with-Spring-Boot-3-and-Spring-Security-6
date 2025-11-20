@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +22,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Controller
 @RequiredArgsConstructor
@@ -31,6 +33,9 @@ public class CookieJwtController {
     private final TokenBlacklistService tokenBlacklistService;
     private final JwtService jwtService;
     private final UserService userService;
+
+    @Value("${app.cookie.secure:false}")
+    private boolean cookieSecure;
 
     @GetMapping("/")
     public String home(@CookieValue(value = "accessToken", defaultValue = "") String accessToken,
@@ -57,7 +62,6 @@ public class CookieJwtController {
                             @RequestParam(value = "tokenExpired", required = false) String tokenExpired,
                             Model model) {
 
-        // Если пользователь уже аутентифицирован, перенаправляем на дашборд
         if (!accessToken.isEmpty() && isTokenValid(accessToken, refreshToken)) {
             return "redirect:/dashboard";
         }
@@ -95,12 +99,11 @@ public class CookieJwtController {
                             HttpServletResponse response,
                             Model model) {
 
-        // Если access токен отсутствует, но есть refresh токен - пытаемся обновить
         if (accessToken.isEmpty() && !refreshToken.isEmpty()) {
             try {
                 JwtAuthenticationResponse newTokens = refreshTokens(refreshToken);
                 if (newTokens != null) {
-                    setTokenCookies(response, newTokens);
+                    setSecureTokenCookies(response, newTokens);
                     model.addAttribute("accessToken", newTokens.getAccessToken());
                     model.addAttribute("refreshToken", newTokens.getRefreshToken());
                     model.addAttribute("username", jwtService.extractUserNameFromAccessToken(newTokens.getAccessToken()));
@@ -112,7 +115,6 @@ public class CookieJwtController {
             }
         }
 
-        // Если access токен есть, проверяем его валидность
         if (accessToken.isEmpty() || !isAccessTokenValid(accessToken)) {
             return "redirect:/login";
         }
@@ -144,7 +146,6 @@ public class CookieJwtController {
                             HttpServletResponse response,
                             Model model) {
 
-        // Проверяем и обновляем токены при необходимости
         String validatedAccessToken = validateAndRefreshTokens(accessToken, refreshToken, response);
         if (validatedAccessToken == null) {
             return "redirect:/login";
@@ -154,7 +155,6 @@ public class CookieJwtController {
             String username = jwtService.extractUserNameFromAccessToken(validatedAccessToken);
             var userDetails = userService.userDetailsService().loadUserByUsername(username);
 
-            // Проверяем роль ADMIN
             if (!userDetails.getAuthorities().stream()
                     .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"))) {
                 return "redirect:/dashboard";
@@ -175,7 +175,7 @@ public class CookieJwtController {
                             RedirectAttributes redirectAttributes) {
         try {
             JwtAuthenticationResponse authResponse = authenticationService.signIn(request);
-            setTokenCookies(response, authResponse);
+            setSecureTokenCookies(response, authResponse);
             return "redirect:/dashboard";
         } catch (Exception e) {
             log.error("Web sign-in failed: {}", e.getMessage());
@@ -190,7 +190,7 @@ public class CookieJwtController {
                             RedirectAttributes redirectAttributes) {
         try {
             JwtAuthenticationResponse authResponse = authenticationService.signUp(request);
-            setTokenCookies(response, authResponse);
+            setSecureTokenCookies(response, authResponse);
             return "redirect:/dashboard";
         } catch (Exception e) {
             log.error("Web sign-up failed: {}", e.getMessage());
@@ -212,7 +212,7 @@ public class CookieJwtController {
             refreshRequest.setRefreshToken(refreshToken);
 
             JwtAuthenticationResponse newTokens = authenticationService.refreshToken(refreshRequest);
-            setTokenCookies(response, newTokens);
+            setSecureTokenCookies(response, newTokens);
             return newTokens;
 
         } catch (Exception e) {
@@ -227,12 +227,10 @@ public class CookieJwtController {
                             HttpServletRequest request) {
 
         try {
-            // Отзываем refresh токен
             if (!refreshToken.isEmpty()) {
                 authenticationService.logout(refreshToken);
             }
 
-            // Добавляем access токен в черный список
             String accessToken = extractAccessTokenFromRequest(request);
             if (accessToken != null && !accessToken.isEmpty()) {
                 tokenBlacklistService.blacklistToken(accessToken);
@@ -241,8 +239,40 @@ public class CookieJwtController {
         } catch (Exception e) {
             log.warn("Error during logout: {}", e.getMessage());
         } finally {
+            clearTokenCookies(response);
+        }
+
+        return "redirect:/?logout=true";
+    }
+
+    @PostMapping("/auth/logout")
+    public String webLogout(@CookieValue(value = "accessToken", defaultValue = "") String accessToken,
+                            @CookieValue(value = "refreshToken", defaultValue = "") String refreshToken,
+                            HttpServletResponse response,
+                            HttpServletRequest request,
+                            RedirectAttributes redirectAttributes) {
+
+        log.info("Web logout called");
+
+        try {
+            // Добавляем access token в blacklist
+            if (!accessToken.isEmpty()) {
+                tokenBlacklistService.blacklistToken(accessToken);
+                log.info("✅ Access token blacklisted during web logout");
+            }
+
+            // Отзываем refresh token
+            if (!refreshToken.isEmpty()) {
+                authenticationService.logout(refreshToken);
+                log.info("✅ Refresh token revoked during web logout");
+            }
+
+        } catch (Exception e) {
+            log.warn("Error during logout: {}", e.getMessage());
+        } finally {
             // Всегда очищаем куки
             clearTokenCookies(response);
+            log.info("✅ Cookies cleared during web logout");
         }
 
         return "redirect:/?logout=true";
@@ -274,52 +304,87 @@ public class CookieJwtController {
         }
     }
 
-    // ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
+    // ========== SECURE COOKIE METHODS ==========
 
-    private void setTokenCookies(HttpServletResponse response, JwtAuthenticationResponse authResponse) {
-        // Access Token cookie (httpOnly для безопасности)
-        Cookie accessTokenCookie = new Cookie("accessToken", authResponse.getAccessToken());
-        accessTokenCookie.setHttpOnly(true);
-        accessTokenCookie.setSecure(false); // true в production
-        accessTokenCookie.setPath("/");
-        accessTokenCookie.setMaxAge(Math.toIntExact(authResponse.getAccessTokenExpiresIn()));
+    private void setSecureTokenCookies(HttpServletResponse response, JwtAuthenticationResponse authResponse) {
+        // Access Token - HTTP Only, Secure
+        Cookie accessTokenCookie = createSecureCookie(
+                "accessToken",
+                authResponse.getAccessToken(),
+                Math.toIntExact(authResponse.getAccessTokenExpiresIn())
+        );
         response.addCookie(accessTokenCookie);
 
-        // Refresh Token cookie (httpOnly для безопасности)
-        Cookie refreshTokenCookie = new Cookie("refreshToken", authResponse.getRefreshToken());
-        refreshTokenCookie.setHttpOnly(true);
-        refreshTokenCookie.setSecure(false); // true в production
-        refreshTokenCookie.setPath("/");
-        refreshTokenCookie.setMaxAge(Math.toIntExact(authResponse.getRefreshTokenExpiresIn()));
+        // Refresh Token - HTTP Only, Secure
+        Cookie refreshTokenCookie = createSecureCookie(
+                "refreshToken",
+                authResponse.getRefreshToken(),
+                Math.toIntExact(authResponse.getRefreshTokenExpiresIn())
+        );
         response.addCookie(refreshTokenCookie);
+
+        // CSRF Token - доступен для JavaScript, но Secure
+        Cookie csrfTokenCookie = new Cookie("XSRF-TOKEN", generateCsrfToken());
+        csrfTokenCookie.setHttpOnly(false);
+        csrfTokenCookie.setSecure(cookieSecure);
+        csrfTokenCookie.setPath("/");
+        csrfTokenCookie.setMaxAge(3600);
+        response.addCookie(csrfTokenCookie);
+    }
+
+    private Cookie createSecureCookie(String name, String value, int maxAge) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setHttpOnly(true); // Защита от XSS
+        cookie.setSecure(cookieSecure); // Только HTTPS в production
+        cookie.setPath("/");
+        cookie.setMaxAge(maxAge);
+
+        // SameSite attribute
+        if (cookieSecure) {
+            // В production используем Strict
+            cookie.setAttribute("SameSite", "Strict");
+        } else {
+            // В development Lax для удобства
+            cookie.setAttribute("SameSite", "Lax");
+        }
+
+        return cookie;
     }
 
     private void clearTokenCookies(HttpServletResponse response) {
-        // Очищаем access token cookies
-        Cookie accessTokenCookie = new Cookie("accessToken", "");
-        accessTokenCookie.setPath("/");
-        accessTokenCookie.setMaxAge(0);
+        // Очищаем access token
+        Cookie accessTokenCookie = createSecureCookie("accessToken", "", 0);
         response.addCookie(accessTokenCookie);
 
-        // Очищаем refresh token cookies
-        Cookie refreshTokenCookie = new Cookie("refreshToken", "");
-        refreshTokenCookie.setPath("/");
-        refreshTokenCookie.setMaxAge(0);
+        // Очищаем refresh token
+        Cookie refreshTokenCookie = createSecureCookie("refreshToken", "", 0);
         response.addCookie(refreshTokenCookie);
+
+        // Очищаем CSRF token
+        Cookie csrfTokenCookie = new Cookie("XSRF-TOKEN", "");
+        csrfTokenCookie.setHttpOnly(false);
+        csrfTokenCookie.setSecure(cookieSecure);
+        csrfTokenCookie.setPath("/");
+        csrfTokenCookie.setMaxAge(0);
+        response.addCookie(csrfTokenCookie);
     }
+
+    private String generateCsrfToken() {
+        return UUID.randomUUID().toString();
+    }
+
+    // ========== HELPER METHODS ==========
 
     private boolean isTokenValid(String accessToken, String refreshToken) {
         if (accessToken.isEmpty()) {
             return false;
         }
 
-        // Проверяем access токен
         if (jwtService.validateAccessToken(accessToken) &&
                 !tokenBlacklistService.isTokenBlacklisted(accessToken)) {
             return true;
         }
 
-        // Если access токен невалиден, но есть refresh токен - пытаемся обновить
         if (!refreshToken.isEmpty()) {
             try {
                 return refreshTokens(refreshToken) != null;
@@ -356,7 +421,7 @@ public class CookieJwtController {
             try {
                 JwtAuthenticationResponse newTokens = refreshTokens(refreshToken);
                 if (newTokens != null) {
-                    setTokenCookies(response, newTokens);
+                    setSecureTokenCookies(response, newTokens);
                     return newTokens.getAccessToken();
                 }
             } catch (Exception e) {
@@ -368,13 +433,11 @@ public class CookieJwtController {
     }
 
     private String extractAccessTokenFromRequest(HttpServletRequest request) {
-        // Из заголовка
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
 
-        // Из куки
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {

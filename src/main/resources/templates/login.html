@@ -5,14 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Вход - JWT Auth Demo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/style.css" rel="stylesheet">
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .security-notice {
+            font-size: 0.875rem;
+            color: #6c757d;
+            margin-top: 1rem;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .password-strength {
+            height: 4px;
+            margin-top: 5px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        .strength-weak { background-color: #dc3545; width: 25%; }
+        .strength-medium { background-color: #ffc107; width: 50%; }
+        .strength-strong { background-color: #28a745; width: 100%; }
+        .form-floating:focus-within {
+            z-index: 2;
+        }
+        .input-group .form-control:focus {
+            z-index: 3;
+        }
+    </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container">
         <a class="navbar-brand" href="/">JWT Auth Demo</a>
-        <div class="navbar-nav">
-            <a class="nav-link" href="/">Главная</a>
-            <a class="nav-link" href="/register">Регистрация</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <div class="navbar-nav">
+                <a class="nav-link" href="/">Главная</a>
+                <a class="nav-link" href="/register">Регистрация</a>
+            </div>
         </div>
     </div>
 </nav>
@@ -20,40 +57,122 @@
 <div class="container mt-5">
     <div class="row justify-content-center">
         <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="mb-0">Вход в систему</h4>
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0 text-center">Вход в систему</h4>
                 </div>
-                <div class="card-body">
-                    <form th:action="@{/auth/web-signin}" method="post" th:object="${signInRequest}">
-                        <div th:if="${param.error}" class="alert alert-danger">
-                            Неверное имя пользователя или пароль
-                        </div>
-                        <div class="mb-3">
-                            <label for="username" class="form-label">Имя пользователя</label>
-                            <input type="text" class="form-control" id="username" th:field="*{username}" required>
-                            <div th:if="${#fields.hasErrors('username')}" class="text-danger">
-                                <small th:errors="*{username}"></small>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Пароль</label>
-                            <input type="password" class="form-control" id="password" th:field="*{password}" required>
-                            <div th:if="${#fields.hasErrors('password')}" class="text-danger">
-                                <small th:errors="*{password}"></small>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100">Войти</button>
-                    </form>
-                    <div class="mt-3 text-center">
-                        <p>Нет аккаунта? <a href="/register">Зарегистрируйтесь</a></p>
+                <div class="card-body p-4">
+                    <!-- Сообщения об ошибках -->
+                    <div th:if="${param.error}" class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <strong>Ошибка!</strong> Неверное имя пользователя или пароль.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
-                    <hr>
+
+                    <div th:if="${param.tokenExpired}" class="alert alert-warning alert-dismissible fade show" role="alert">
+                        <strong>Сессия истекла!</strong> Пожалуйста, войдите снова.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+
+                    <div th:if="${param.logout}" class="alert alert-success alert-dismissible fade show" role="alert">
+                        <strong>Успех!</strong> Вы вышли из системы.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+
+                    <!-- Форма входа -->
+                    <form th:action="@{/auth/web-signin}" method="post" th:object="${signInRequest}" id="loginForm" novalidate>
+                        <!-- CSRF Token -->
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+                        <!-- Поле имени пользователя -->
+                        <div class="form-floating mb-3">
+                            <input type="text"
+                                   class="form-control"
+                                   id="username"
+                                   th:field="*{username}"
+                                   placeholder="Введите имя пользователя"
+                                   required
+                                   minlength="5"
+                                   maxlength="50"
+                                   oninput="sanitizeInput(this)"
+                                   autocomplete="username">
+                            <label for="username">Имя пользователя</label>
+                            <div class="invalid-feedback" id="usernameFeedback">
+                                Имя пользователя должно содержать от 5 до 50 символов
+                            </div>
+                        </div>
+
+                        <!-- Поле пароля -->
+                        <div class="form-floating mb-3">
+                            <input type="password"
+                                   class="form-control"
+                                   id="password"
+                                   th:field="*{password}"
+                                   placeholder="Введите пароль"
+                                   required
+                                   minlength="8"
+                                   maxlength="255"
+                                   oninput="sanitizeInput(this); checkPasswordStrength(this.value)"
+                                   autocomplete="current-password">
+                            <label for="password">Пароль</label>
+                            <div class="invalid-feedback" id="passwordFeedback">
+                                Пароль должен содержать не менее 8 символов
+                            </div>
+                            <div class="password-strength" id="passwordStrength"></div>
+                        </div>
+
+                        <!-- Дополнительные опции -->
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="rememberMe" name="rememberMe">
+                            <label class="form-check-label" for="rememberMe">Запомнить меня</label>
+                        </div>
+
+                        <!-- Кнопка отправки -->
+                        <button type="submit" class="btn btn-primary w-100 py-2" id="submitBtn">
+                            <span class="spinner-border spinner-border-sm d-none" role="status" id="loadingSpinner"></span>
+                            <span id="btnText">Войти</span>
+                        </button>
+                    </form>
+
+                    <!-- Ссылки -->
+                    <div class="mt-4 text-center">
+                        <p class="mb-2">Нет аккаунта? <a href="/register" class="text-decoration-none">Зарегистрируйтесь</a></p>
+                        <a href="/forgot-password" class="text-decoration-none small">Забыли пароль?</a>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Тестовые пользователи -->
                     <div class="mt-3">
-                        <h6>Тестовые пользователи:</h6>
-                        <ul class="list-unstyled">
-                            <li><strong>network_admin / NetAdmin789!</strong> (ADMIN)</li>
-                            <li><strong>petrov / petrov123</strong> (USER)</li>
+                        <h6 class="text-muted">Тестовые пользователи:</h6>
+                        <div class="row small">
+                            <div class="col-md-6">
+                                <div class="card mb-2">
+                                    <div class="card-body py-2">
+                                        <strong>Администратор</strong><br>
+                                        <code>network_admin / NetAdmin789!</code>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card mb-2">
+                                    <div class="card-body py-2">
+                                        <strong>Пользователь</strong><br>
+                                        <code>petrov / petrov123</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Уведомление о безопасности -->
+                    <div class="security-notice mt-4">
+                        <h6 class="mb-2">🔒 Безопасность</h6>
+                        <p class="mb-1 small">Токены защищены с помощью:</p>
+                        <ul class="small mb-0">
+                            <li>HTTP-only cookies</li>
+                            <li>CSRF защита</li>
+                            <li>Secure flag (HTTPS)</li>
+                            <li>SameSite policy</li>
                         </ul>
                     </div>
                 </div>
@@ -62,6 +181,410 @@
     </div>
 </div>
 
+<!-- Контейнер для безопасных сообщений -->
+<div id="secure-messages"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Безопасный менеджер токенов -->
+<script>
+    class SecureTokenManager {
+        constructor() {
+            this.accessToken = null;
+            this.refreshToken = null;
+            this.csrfToken = null;
+            this.isInitialized = false;
+
+            this.init();
+        }
+
+        init() {
+            this.cleanupInsecureStorage();
+            this.loadCsrfToken();
+            this.isInitialized = true;
+            console.log('SecureTokenManager initialized');
+        }
+
+        // Очистка небезопасного хранения
+        cleanupInsecureStorage() {
+            const storageKeys = ['accessToken', 'refreshToken', 'jwtToken', 'token'];
+
+            storageKeys.forEach(key => {
+                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
+            });
+
+            this.clearInsecureCookies();
+        }
+
+        clearInsecureCookies() {
+            const insecureCookies = ['token', 'jwt', 'auth_token'];
+            insecureCookies.forEach(cookieName => {
+                document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+            });
+        }
+
+        // Загрузка CSRF токена из куки
+        loadCsrfToken() {
+            this.csrfToken = this.getCookie('XSRF-TOKEN');
+        }
+
+        // Безопасное получение куки
+        getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) {
+                return parts.pop().split(';').shift();
+            }
+            return null;
+        }
+
+        // Проверка аутентификации
+        isAuthenticated() {
+            return this.csrfToken !== null;
+        }
+
+        // Безопасный HTTP запрос
+        async makeSecureRequest(url, options = {}) {
+            if (!this.isInitialized) {
+                throw new Error('TokenManager not initialized');
+            }
+
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            if (this.csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)) {
+                headers['X-XSRF-TOKEN'] = this.csrfToken;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers,
+                    credentials: 'include'
+                });
+
+                if (response.status === 401) {
+                    console.log('Token expired, attempting refresh...');
+                    const refreshed = await this.refreshTokens();
+                    if (refreshed) {
+                        return this.makeSecureRequest(url, options);
+                    } else {
+                        this.handleAuthFailure();
+                        throw new Error('Authentication failed');
+                    }
+                }
+
+                if (response.status === 403) {
+                    this.handleForbidden();
+                    throw new Error('Access denied');
+                }
+
+                return response;
+
+            } catch (error) {
+                console.error('Secure request failed:', error);
+                throw error;
+            }
+        }
+
+        // Обновление токенов
+        async refreshTokens() {
+            try {
+                const response = await this.makeSecureRequest('/auth/web-refresh', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    console.log('Tokens refreshed successfully');
+                    return true;
+                }
+            } catch (error) {
+                console.error('Token refresh failed:', error);
+            }
+
+            return false;
+        }
+
+        // Обработка ошибки аутентификации
+        handleAuthFailure() {
+            this.logout();
+            this.showMessage('Сессия истекла. Пожалуйста, войдите снова.', 'error');
+
+            setTimeout(() => {
+                window.location.href = '/login?tokenExpired=true';
+            }, 2000);
+        }
+
+        // Обработка запрета доступа
+        handleForbidden() {
+            this.showMessage('Доступ запрещен', 'error');
+        }
+
+        // Безопасный logout
+        async logout() {
+            try {
+                await this.makeSecureRequest('/auth/web-logout', {
+                    method: 'POST'
+                });
+            } catch (error) {
+                console.error('Logout request failed:', error);
+            } finally {
+                this.clearLocalState();
+                window.location.href = '/?logout=true';
+            }
+        }
+
+        // Очистка локального состояния
+        clearLocalState() {
+            this.accessToken = null;
+            this.refreshToken = null;
+            this.csrfToken = null;
+            this.cleanupInsecureStorage();
+        }
+
+        // Показать сообщение пользователю
+        showMessage(message, type = 'info') {
+            let messageContainer = document.getElementById('secure-messages');
+            if (!messageContainer) {
+                messageContainer = document.createElement('div');
+                messageContainer.id = 'secure-messages';
+                messageContainer.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        z-index: 10000;
+                        max-width: 400px;
+                    `;
+                document.body.appendChild(messageContainer);
+            }
+
+            const messageElement = document.createElement('div');
+            messageElement.style.cssText = `
+                    padding: 12px 16px;
+                    margin-bottom: 10px;
+                    border-radius: 4px;
+                    color: white;
+                    font-family: Arial, sans-serif;
+                    font-size: 14px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    animation: slideIn 0.3s ease-out;
+                `;
+
+            const styles = {
+                error: 'background-color: #dc3545;',
+                success: 'background-color: #28a745;',
+                info: 'background-color: #17a2b8;',
+                warning: 'background-color: #ffc107; color: #212529;'
+            };
+
+            messageElement.style.cssText += styles[type] || styles.info;
+            messageElement.textContent = message;
+            messageContainer.appendChild(messageElement);
+
+            setTimeout(() => {
+                if (messageElement.parentNode) {
+                    messageElement.parentNode.removeChild(messageElement);
+                }
+            }, 5000);
+        }
+
+        // Защита от XSS - санитизация ввода
+        sanitizeInput(input) {
+            const div = document.createElement('div');
+            div.textContent = input;
+            return div.innerHTML;
+        }
+
+        // Проверка безопасности URL
+        isSafeUrl(url) {
+            try {
+                const parsedUrl = new URL(url, window.location.origin);
+                return parsedUrl.origin === window.location.origin;
+            } catch {
+                return false;
+            }
+        }
+    }
+
+    // CSS для анимаций
+    const style = document.createElement('style');
+    style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+        `;
+    document.head.appendChild(style);
+
+    // Инициализация менеджера токенов
+    let tokenManager;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        tokenManager = new SecureTokenManager();
+
+        // Инициализация Bootstrap валидации
+        initFormValidation();
+
+        // Защита от вставки токенов в формы
+        document.addEventListener('submit', function(e) {
+            const forms = document.querySelectorAll('form');
+            forms.forEach(form => {
+                const tokenInputs = form.querySelectorAll('input[type="hidden"][name*="token"], input[type="hidden"][name*="Token"]');
+                tokenInputs.forEach(input => {
+                    if (!input.name.includes('_csrf')) {
+                        input.remove();
+                    }
+                });
+            });
+        });
+    });
+
+    // Функция санитизации ввода
+    function sanitizeInput(inputElement) {
+        const originalValue = inputElement.value;
+        const sanitizedValue = tokenManager.sanitizeInput(originalValue);
+        if (originalValue !== sanitizedValue) {
+            inputElement.value = sanitizedValue;
+            tokenManager.showMessage('Ввод был очищен от потенциально опасных символов', 'warning');
+        }
+    }
+
+    // Проверка силы пароля
+    function checkPasswordStrength(password) {
+        const strengthBar = document.getElementById('passwordStrength');
+        if (!password) {
+            strengthBar.className = 'password-strength';
+            strengthBar.style.width = '0%';
+            return;
+        }
+
+        let strength = 0;
+
+        // Длина пароля
+        if (password.length >= 8) strength += 25;
+        if (password.length >= 12) strength += 15;
+
+        // Наличие разных типов символов
+        if (/[a-z]/.test(password)) strength += 15;
+        if (/[A-Z]/.test(password)) strength += 15;
+        if (/[0-9]/.test(password)) strength += 15;
+        if (/[^a-zA-Z0-9]/.test(password)) strength += 15;
+
+        // Обновление индикатора
+        strengthBar.style.width = Math.min(strength, 100) + '%';
+
+        if (strength < 50) {
+            strengthBar.className = 'password-strength strength-weak';
+        } else if (strength < 80) {
+            strengthBar.className = 'password-strength strength-medium';
+        } else {
+            strengthBar.className = 'password-strength strength-strong';
+        }
+    }
+
+    // Инициализация валидации формы
+    function initFormValidation() {
+        const form = document.getElementById('loginForm');
+        const username = document.getElementById('username');
+        const password = document.getElementById('password');
+        const submitBtn = document.getElementById('submitBtn');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const btnText = document.getElementById('btnText');
+
+        // Валидация в реальном времени
+        username.addEventListener('input', function() {
+            validateField(this, 5, 50);
+        });
+
+        password.addEventListener('input', function() {
+            validateField(this, 8, 255);
+        });
+
+        // Обработка отправки формы
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            if (validateForm()) {
+                // Показываем индикатор загрузки
+                loadingSpinner.classList.remove('d-none');
+                btnText.textContent = 'Вход...';
+                submitBtn.disabled = true;
+
+                // Отправляем форму
+                this.submit();
+            } else {
+                tokenManager.showMessage('Пожалуйста, исправьте ошибки в форме', 'error');
+            }
+        });
+
+        // Валидация отдельного поля
+        function validateField(field, minLength, maxLength) {
+            const value = field.value.trim();
+            const isValid = value.length >= minLength && value.length <= maxLength;
+
+            if (isValid) {
+                field.classList.remove('is-invalid');
+                field.classList.add('is-valid');
+            } else {
+                field.classList.remove('is-valid');
+                field.classList.add('is-invalid');
+            }
+
+            return isValid;
+        }
+
+        // Валидация всей формы
+        function validateForm() {
+            const isUsernameValid = validateField(username, 5, 50);
+            const isPasswordValid = validateField(password, 8, 255);
+
+            return isUsernameValid && isPasswordValid;
+        }
+    }
+
+    // Защита от кражи токенов через console.log
+    if (typeof console !== 'undefined') {
+        const originalLog = console.log;
+        console.log = function(...args) {
+            const filteredArgs = args.map(arg => {
+                if (typeof arg === 'string' && (arg.includes('Bearer ') || arg.length > 100)) {
+                    return '[SECURE TOKEN HIDDEN]';
+                }
+                return arg;
+            });
+            originalLog.apply(console, filteredArgs);
+        };
+    }
+
+    // Автоматическая очистка при закрытии вкладки
+    window.addEventListener('beforeunload', function() {
+        if (tokenManager) {
+            tokenManager.cleanupInsecureStorage();
+        }
+    });
+
+    // Защита от копирования пароля
+    document.getElementById('password').addEventListener('copy', function(e) {
+        tokenManager.showMessage('Копирование пароля не рекомендуется по соображениям безопасности', 'warning');
+    });
+
+    // Защита от вставки в поля ввода
+    document.getElementById('username').addEventListener('paste', function(e) {
+        setTimeout(() => sanitizeInput(this), 10);
+    });
+
+    document.getElementById('password').addEventListener('paste', function(e) {
+        setTimeout(() => sanitizeInput(this), 10);
+    });
+</script>
 </body>
 </html>

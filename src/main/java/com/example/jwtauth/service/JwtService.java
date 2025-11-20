@@ -70,8 +70,14 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject, getRefreshSigningKey());
     }
 
-    public Claims getRefreshClaims(String token) {
-        return extractAllClaims(token, getRefreshSigningKey());
+    // Общие методы для совместимости со старым кодом
+    public String extractUsername(String token) {
+        return extractUserNameFromAccessToken(token);
+    }
+
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername())) && validateAccessToken(token);
     }
 
     // Общие методы

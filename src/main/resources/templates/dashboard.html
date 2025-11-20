@@ -46,6 +46,21 @@
             font-weight: 600;
             margin-bottom: 0.5rem;
         }
+        .logout-btn {
+            color: #dc3545 !important;
+            border: none;
+            background: none;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s ease;
+        }
+        .logout-btn:hover {
+            color: #fff !important;
+            background-color: #dc3545;
+            border-radius: 0.375rem;
+        }
+        .loading-spinner {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -56,12 +71,10 @@
             <a class="nav-link" href="/">Главная</a>
             <a class="nav-link active" href="/dashboard">Дашборд</a>
             <a class="nav-link" href="/admin">Админка</a>
-            <form action="/auth/web-logout" method="post" style="display: inline;">
-                <button type="submit" class="nav-link btn btn-link text-light text-decoration-none"
-                        style="border: none; background: none; padding: 0.5rem 1rem;">
-                    Выйти
-                </button>
-            </form>
+            <button class="nav-link btn btn-link text-light text-decoration-none logout-btn"
+                    onclick="logout()">
+                Выйти
+            </button>
         </div>
     </div>
 </nav>
@@ -74,12 +87,20 @@
                     <h4 class="mb-0">Панель управления</h4>
                 </div>
                 <div class="card-body">
+                    <!-- Сообщения -->
+                    <div th:if="${param.logout}" class="alert alert-info">
+                        Вы успешно вышли из системы.
+                    </div>
+                    <div th:if="${param.tokenExpired}" class="alert alert-warning">
+                        Сессия истекла. Пожалуйста, войдите снова.
+                    </div>
+
                     <div class="alert alert-success">
                         <h5>Добро пожаловать, <span th:text="${username}">Пользователь</span>!</h5>
                         <p>Вы успешно авторизованы в системе.</p>
                     </div>
 
-                    <!-- НОВЫЙ ФУНКЦИОНАЛ: Управление токенами -->
+                    <!-- Управление токенами -->
                     <div class="token-section">
                         <h5>🔐 Управление токенами</h5>
                         <div class="row mt-3">
@@ -93,10 +114,10 @@
                                             <!-- Access Token будет здесь -->
                                         </div>
                                         <div class="d-flex gap-2">
-                                            <button class="btn btn-outline-primary btn-sm copy-btn" onclick="copyAccessToken()">
+                                            <button class="btn btn-outline-primary btn-sm copy-btn" onclick="copyAccessToken(event)">
                                                 📋 Копировать Access
                                             </button>
-                                            <button class="btn btn-outline-secondary btn-sm" onclick="toggleAccessTokenVisibility()">
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="toggleAccessTokenVisibility(event)">
                                                 👁️ Показать/Скрыть
                                             </button>
                                         </div>
@@ -113,10 +134,10 @@
                                             <!-- Refresh Token будет здесь -->
                                         </div>
                                         <div class="d-flex gap-2">
-                                            <button class="btn btn-outline-success btn-sm copy-btn" onclick="copyRefreshToken()">
+                                            <button class="btn btn-outline-success btn-sm copy-btn" onclick="copyRefreshToken(event)">
                                                 📋 Копировать Refresh
                                             </button>
-                                            <button class="btn btn-outline-secondary btn-sm" onclick="toggleRefreshTokenVisibility()">
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="toggleRefreshTokenVisibility(event)">
                                                 👁️ Показать/Скрыть
                                             </button>
                                         </div>
@@ -129,6 +150,7 @@
                             <div class="col-12">
                                 <div class="d-grid gap-2 d-md-flex justify-content-md-center">
                                     <button class="btn btn-warning me-md-2" onclick="refreshTokens()">
+                                        <span class="spinner-border spinner-border-sm loading-spinner" id="refreshSpinner"></span>
                                         🔄 Обновить токены
                                     </button>
                                     <button class="btn btn-info me-md-2" onclick="checkTokenStatus()">
@@ -142,7 +164,7 @@
                         </div>
                     </div>
 
-                    <!-- СТАРЫЙ ФУНКЦИОНАЛ: Тестирование API -->
+                    <!-- Тестирование API -->
                     <div class="row mt-4">
                         <div class="col-md-6">
                             <div class="card">
@@ -168,8 +190,8 @@
                                     <h5>Информация о пользователе</h5>
                                     <ul class="list-unstyled small">
                                         <li>👤 <strong>Пользователь:</strong> <span th:text="${username}"></span></li>
-                                        <li>📏 <strong>Access Token длина:</strong> <span th:text="${accessToken != null ? accessToken.length() : 0}"></span> символов</li>
-                                        <li>📏 <strong>Refresh Token длина:</strong> <span th:text="${refreshToken != null ? refreshToken.length() : 0}"></span> символов</li>
+                                        <li>📏 <strong>Access Token длина:</strong> <span id="accessTokenLength" th:text="${accessToken != null ? accessToken.length() : 0}"></span> символов</li>
+                                        <li>📏 <strong>Refresh Token длина:</strong> <span id="refreshTokenLength" th:text="${refreshToken != null ? refreshToken.length() : 0}"></span> символов</li>
                                         <li>⏰ <strong>Access Token срок:</strong> 5 минут</li>
                                         <li>⏰ <strong>Refresh Token срок:</strong> 30 дней</li>
                                     </ul>
@@ -194,26 +216,120 @@
 </div>
 
 <script>
+    // Глобальные переменные
     let accessTokenVisible = true;
     let refreshTokenVisible = true;
 
-    // Сохраняем оригинальные токены при загрузке
+    // Инициализация при загрузке страницы
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('Dashboard initialized');
+
+        // Сохраняем оригинальные токены
         const accessTokenElement = document.getElementById('accessTokenDisplay');
         const refreshTokenElement = document.getElementById('refreshTokenDisplay');
 
-        if (accessTokenElement) {
+        if (accessTokenElement && accessTokenElement.textContent) {
             accessTokenElement.setAttribute('data-original', accessTokenElement.textContent);
         }
-        if (refreshTokenElement) {
+        if (refreshTokenElement && refreshTokenElement.textContent) {
             refreshTokenElement.setAttribute('data-original', refreshTokenElement.textContent);
         }
+
+        // Обновляем длины токенов
+        updateTokenLengths();
     });
 
+    // Функция выхода
+    async function logout() {
+        try {
+            console.log('Starting logout process...');
+
+            const logoutBtn = event.target;
+            const originalText = logoutBtn.textContent;
+            logoutBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Выход...';
+            logoutBtn.disabled = true;
+
+            // 1. Отправляем запрос на сервер для выхода
+            const response = await fetch('/auth/logout', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-XSRF-TOKEN': getCsrfToken()
+                }
+            });
+
+            console.log('Logout response status:', response.status);
+
+            // 2. Всегда очищаем куки на клиенте
+            clearAllCookies();
+
+            // 3. Перенаправляем на главную страницу
+            window.location.href = '/?logout=true';
+
+        } catch (error) {
+            console.error('Logout error:', error);
+            // Fallback: очищаем куки и редиректим
+            clearAllCookies();
+            window.location.href = '/?logout=true';
+        }
+    }
+
+    function clearAllCookies() {
+        const cookies = ['accessToken', 'refreshToken', 'XSRF-TOKEN', 'JSESSIONID'];
+        const domains = ['', 'localhost', '127.0.0.1'];
+
+        domains.forEach(domain => {
+            cookies.forEach(cookieName => {
+                let cookieString = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+                if (domain) {
+                    cookieString += ` domain=${domain};`;
+                }
+                document.cookie = cookieString;
+            });
+        });
+        console.log('All cookies cleared');
+    }
+
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) {
+            return parts.pop().split(';').shift();
+        }
+        return null;
+    }
+
+    function getCsrfToken() {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; XSRF-TOKEN=`);
+        if (parts.length === 2) {
+            return parts.pop().split(';').shift();
+        }
+        return '';
+    }
+
+    function updateTokenLengths() {
+        const accessTokenElement = document.getElementById('accessTokenDisplay');
+        const refreshTokenElement = document.getElementById('refreshTokenDisplay');
+        const accessTokenLengthElement = document.getElementById('accessTokenLength');
+        const refreshTokenLengthElement = document.getElementById('refreshTokenLength');
+
+        if (accessTokenElement && accessTokenLengthElement) {
+            const accessToken = accessTokenElement.getAttribute('data-original') || accessTokenElement.textContent;
+            accessTokenLengthElement.textContent = accessToken.length;
+        }
+
+        if (refreshTokenElement && refreshTokenLengthElement) {
+            const refreshToken = refreshTokenElement.getAttribute('data-original') || refreshTokenElement.textContent;
+            refreshTokenLengthElement.textContent = refreshToken.length;
+        }
+    }
+
     // Копирование Access Token
-    function copyAccessToken() {
+    function copyAccessToken(event) {
         const tokenElement = document.getElementById('accessTokenDisplay');
-        const token = tokenElement.textContent;
+        const token = tokenElement.getAttribute('data-original') || tokenElement.textContent;
 
         navigator.clipboard.writeText(token).then(() => {
             const btn = event.target;
@@ -234,9 +350,9 @@
     }
 
     // Копирование Refresh Token
-    function copyRefreshToken() {
+    function copyRefreshToken(event) {
         const tokenElement = document.getElementById('refreshTokenDisplay');
-        const token = tokenElement.textContent;
+        const token = tokenElement.getAttribute('data-original') || tokenElement.textContent;
 
         navigator.clipboard.writeText(token).then(() => {
             const btn = event.target;
@@ -257,7 +373,7 @@
     }
 
     // Переключение видимости Access Token
-    function toggleAccessTokenVisibility() {
+    function toggleAccessTokenVisibility(event) {
         const tokenElement = document.getElementById('accessTokenDisplay');
         const btn = event.target;
 
@@ -268,7 +384,8 @@
             tokenElement.style.borderColor = '#dee2e6';
             btn.textContent = '👁️ Показать Access Token';
         } else {
-            tokenElement.textContent = tokenElement.getAttribute('data-original') || tokenElement.textContent;
+            const originalToken = tokenElement.getAttribute('data-original') || '';
+            tokenElement.textContent = originalToken;
             tokenElement.style.color = '#155724';
             tokenElement.style.backgroundColor = '#d4edda';
             tokenElement.style.borderColor = '#28a745';
@@ -278,7 +395,7 @@
     }
 
     // Переключение видимости Refresh Token
-    function toggleRefreshTokenVisibility() {
+    function toggleRefreshTokenVisibility(event) {
         const tokenElement = document.getElementById('refreshTokenDisplay');
         const btn = event.target;
 
@@ -289,7 +406,8 @@
             tokenElement.style.borderColor = '#dee2e6';
             btn.textContent = '👁️ Показать Refresh Token';
         } else {
-            tokenElement.textContent = tokenElement.getAttribute('data-original') || tokenElement.textContent;
+            const originalToken = tokenElement.getAttribute('data-original') || '';
+            tokenElement.textContent = originalToken;
             tokenElement.style.color = '#155724';
             tokenElement.style.backgroundColor = '#d4edda';
             tokenElement.style.borderColor = '#28a745';
@@ -298,15 +416,22 @@
         refreshTokenVisible = !refreshTokenVisible;
     }
 
-    // НОВЫЙ ФУНКЦИОНАЛ: Обновление токенов
+    // Обновление токенов
     async function refreshTokens() {
-        showAlert('🔄 Обновление токенов...', 'info');
+        const refreshBtn = document.querySelector('button[onclick="refreshTokens()"]');
+        const spinner = document.getElementById('refreshSpinner');
 
         try {
+            refreshBtn.disabled = true;
+            spinner.style.display = 'inline-block';
+
+            showAlert('🔄 Обновление токенов...', 'info');
+
             const response = await fetch('/auth/web-refresh', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-XSRF-TOKEN': getCsrfToken()
                 },
                 credentials: 'include'
             });
@@ -322,15 +447,12 @@
                 document.getElementById('accessTokenDisplay').setAttribute('data-original', data.accessToken);
                 document.getElementById('refreshTokenDisplay').setAttribute('data-original', data.refreshToken);
 
-                // Сбрасываем видимость и возвращаем зеленый цвет
+                // Сбрасываем видимость
                 accessTokenVisible = true;
                 refreshTokenVisible = true;
-                document.getElementById('accessTokenDisplay').style.color = '#155724';
-                document.getElementById('accessTokenDisplay').style.backgroundColor = '#d4edda';
-                document.getElementById('accessTokenDisplay').style.borderColor = '#28a745';
-                document.getElementById('refreshTokenDisplay').style.color = '#155724';
-                document.getElementById('refreshTokenDisplay').style.backgroundColor = '#d4edda';
-                document.getElementById('refreshTokenDisplay').style.borderColor = '#28a745';
+
+                // Обновляем длины токенов
+                updateTokenLengths();
 
                 showAlert('✅ Токены успешно обновлены!', 'success');
             } else {
@@ -340,17 +462,17 @@
         } catch (error) {
             console.error('Token refresh error:', error);
             showAlert('❌ Ошибка обновления токенов. Пожалуйста, войдите снова.', 'error');
-            setTimeout(() => {
-                window.location.href = '/login?tokenExpired=true';
-            }, 3000);
+        } finally {
+            refreshBtn.disabled = false;
+            spinner.style.display = 'none';
         }
     }
 
-    // НОВЫЙ ФУНКЦИОНАЛ: Проверка статуса токенов
+    // Проверка статуса токенов
     async function checkTokenStatus() {
-        showAlert('📊 Проверка статуса токенов...', 'info');
-
         try {
+            showAlert('📊 Проверка статуса токенов...', 'info');
+
             const response = await fetch('/token-info', {
                 credentials: 'include'
             });
@@ -361,8 +483,8 @@
                 showAlert('❌ ' + tokenInfo.error, 'error');
             } else {
                 showAlert(`✅ Статус токена: ${tokenInfo.isValid ? 'VALID' : 'INVALID'}<br>
-                              👤 Пользователь: ${tokenInfo.username}<br>
-                              📏 Длина: ${tokenInfo.length} символов`, 'success');
+                👤 Пользователь: ${tokenInfo.username}<br>
+                📏 Длина: ${tokenInfo.length} символов`, 'success');
             }
         } catch (error) {
             console.error('Token status check error:', error);
@@ -370,37 +492,30 @@
         }
     }
 
-    // НОВЫЙ ФУНКЦИОНАЛ: Информация о токенах
+    // Информация о токенах
     function showTokenInfo() {
-        const accessToken = document.getElementById('accessTokenDisplay').getAttribute('data-original');
-        const refreshToken = document.getElementById('refreshTokenDisplay').getAttribute('data-original');
+        const accessToken = document.getElementById('accessTokenDisplay').getAttribute('data-original') || '';
+        const refreshToken = document.getElementById('refreshTokenDisplay').getAttribute('data-original') || '';
 
         const info = `
-                <strong>Информация о токенах:</strong><br>
-                🔐 <strong>Access Token:</strong><br>
-                - Длина: ${accessToken ? accessToken.length : 0} символов<br>
-                - Срок: 5 минут<br>
-                - Назначение: Доступ к API<br><br>
+            <strong>Информация о токенах:</strong><br>
+            🔐 <strong>Access Token:</strong><br>
+            - Длина: ${accessToken.length} символов<br>
+            - Срок: 5 минут<br>
+            - Назначение: Доступ к API<br><br>
 
-                🔄 <strong>Refresh Token:</strong><br>
-                - Длина: ${refreshToken ? refreshToken.length : 0} символов<br>
-                - Срок: 30 дней<br>
-                - Назначение: Обновление сессии
-            `;
+            🔄 <strong>Refresh Token:</strong><br>
+            - Длина: ${refreshToken.length} символов<br>
+            - Срок: 30 дней<br>
+            - Назначение: Обновление сессии
+        `;
 
         showAlert(info, 'info');
     }
 
-    // СТАРЫЙ ФУНКЦИОНАЛ: Тестирование API
-    function getTokenFromCookie() {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; accessToken=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-        return null;
-    }
-
+    // Тестирование API
     async function makeAuthenticatedRequest(url, method = 'GET') {
-        const token = getTokenFromCookie();
+        const token = getCookie('accessToken');
 
         const response = await fetch(url, {
             method: method,
@@ -414,7 +529,7 @@
             throw new Error(`HTTP ошибка! статус: ${response.status}`);
         }
 
-        return await response.text();
+        return await response.json();
     }
 
     function testProtectedEndpoint() {
@@ -424,7 +539,7 @@
         makeAuthenticatedRequest('/api/example')
             .then(data => {
                 document.getElementById('apiResults').innerHTML =
-                    '<div class="alert alert-success">✅ Успешно!<br>' + data + '</div>';
+                    '<div class="alert alert-success">✅ Успешно!<br>' + JSON.stringify(data, null, 2) + '</div>';
             })
             .catch(error => {
                 document.getElementById('apiResults').innerHTML =
@@ -439,7 +554,7 @@
         makeAuthenticatedRequest('/api/example/admin')
             .then(data => {
                 document.getElementById('apiResults').innerHTML =
-                    '<div class="alert alert-success">✅ Успешно!<br>' + data + '</div>';
+                    '<div class="alert alert-success">✅ Успешно!<br>' + JSON.stringify(data, null, 2) + '</div>';
             })
             .catch(error => {
                 document.getElementById('apiResults').innerHTML =
@@ -455,7 +570,7 @@
         makeAuthenticatedRequest('/api/example/get-admin')
             .then(data => {
                 document.getElementById('apiResults').innerHTML =
-                    '<div class="alert alert-info">ℹ️ ' + data +
+                    '<div class="alert alert-info">ℹ️ ' + data.message +
                     '<br><small>Обновите страницу и попробуйте админ эндпоинт снова</small></div>';
             })
             .catch(error => {
@@ -466,15 +581,18 @@
 
     // Вспомогательная функция для показа уведомлений
     function showAlert(message, type) {
+        // Удаляем старые уведомления
+        const oldAlerts = document.querySelectorAll('#apiResults .alert');
+        oldAlerts.forEach(alert => alert.remove());
+
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
         alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
 
         const resultsDiv = document.getElementById('apiResults');
-        resultsDiv.innerHTML = '';
         resultsDiv.appendChild(alertDiv);
     }
 </script>

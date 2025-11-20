@@ -1,6 +1,7 @@
 package com.example.jwtauth.config;
 
 import com.example.jwtauth.service.TokenBlacklistService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -11,6 +12,8 @@ import org.springframework.security.web.authentication.logout.LogoutSuccessHandl
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -18,6 +21,7 @@ import java.io.IOException;
 public class CustomLogoutSuccessHandler implements LogoutSuccessHandler {
 
     private final TokenBlacklistService tokenBlacklistService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public void onLogoutSuccess(HttpServletRequest request,
@@ -32,25 +36,35 @@ public class CustomLogoutSuccessHandler implements LogoutSuccessHandler {
             log.info("✅ Token blacklisted during Spring Security logout");
         }
 
-        clearTokenCookie(response);
-        log.info("✅ Token cookie cleared");
+        clearTokenCookies(response);
+        log.info("✅ Token cookies cleared");
 
         if (isWebRequest(request)) {
             response.sendRedirect("/?logout=true");
         } else {
             response.setStatus(HttpServletResponse.SC_OK);
             response.setContentType("application/json");
-            response.getWriter().write("{\"message\": \"Logout successful\"}");
+            Map<String, String> responseBody = new HashMap<>();
+            responseBody.put("message", "Logout successful");
+            responseBody.put("redirect", "/");
+            response.getWriter().write(objectMapper.writeValueAsString(responseBody));
         }
 
         log.info("✅ Spring Security logout completed successfully");
     }
 
     private String extractTokenFromRequest(HttpServletRequest request) {
+        // Пробуем извлечь из заголовка Authorization
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+
+        // Пробуем извлечь из куки
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {
-                if ("token".equals(cookie.getName())) {
+                if ("accessToken".equals(cookie.getName())) {
                     return cookie.getValue();
                 }
             }
@@ -58,19 +72,30 @@ public class CustomLogoutSuccessHandler implements LogoutSuccessHandler {
         return null;
     }
 
-    private void clearTokenCookie(HttpServletResponse response) {
-        Cookie cookie1 = new Cookie("token", null);
-        cookie1.setHttpOnly(true);
-        cookie1.setSecure(false);
-        cookie1.setPath("/");
-        cookie1.setMaxAge(0);
-        response.addCookie(cookie1);
+    private void clearTokenCookies(HttpServletResponse response) {
+        // Очищаем access token cookie
+        Cookie accessTokenCookie = new Cookie("accessToken", null);
+        accessTokenCookie.setHttpOnly(true);
+        accessTokenCookie.setSecure(false);
+        accessTokenCookie.setPath("/");
+        accessTokenCookie.setMaxAge(0);
+        response.addCookie(accessTokenCookie);
 
-        Cookie cookie2 = new Cookie("token", null);
-        cookie2.setPath("/");
-        cookie2.setDomain("localhost");
-        cookie2.setMaxAge(0);
-        response.addCookie(cookie2);
+        // Очищаем refresh token cookie
+        Cookie refreshTokenCookie = new Cookie("refreshToken", null);
+        refreshTokenCookie.setHttpOnly(true);
+        refreshTokenCookie.setSecure(false);
+        refreshTokenCookie.setPath("/");
+        refreshTokenCookie.setMaxAge(0);
+        response.addCookie(refreshTokenCookie);
+
+        // Очищаем CSRF token cookie
+        Cookie csrfTokenCookie = new Cookie("XSRF-TOKEN", null);
+        csrfTokenCookie.setHttpOnly(false);
+        csrfTokenCookie.setSecure(false);
+        csrfTokenCookie.setPath("/");
+        csrfTokenCookie.setMaxAge(0);
+        response.addCookie(csrfTokenCookie);
     }
 
     private boolean isWebRequest(HttpServletRequest request) {

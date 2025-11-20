@@ -39,6 +39,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         String requestPath = request.getRequestURI();
+        String userAgent = request.getHeader("User-Agent");
+        String ipAddress = getClientIpAddress(request);
+
+        // Логирование всех запросов к защищенным endpoint'ам
+        log.debug("Auth attempt: {} from IP: {}, User-Agent: {}",
+                requestPath, ipAddress, userAgent);
 
         if (isPublicEndpoint(requestPath)) {
             filterChain.doFilter(request, response);
@@ -46,35 +52,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String jwt = extractTokenFromHeader(request);
-
         if (StringUtils.isEmpty(jwt)) {
             jwt = extractTokenFromCookie(request);
         }
 
         if (StringUtils.isEmpty(jwt)) {
-            log.warn("No JWT token found for protected endpoint: {}", requestPath);
+            log.warn("No JWT token found for protected endpoint: {} from IP: {}", requestPath, ipAddress);
             handleUnauthorized(request, response, "No token found");
             return;
         }
 
+        // УСИЛЕННАЯ ПРОВЕРКА BLACKLIST
         if (tokenBlacklistService.isTokenBlacklisted(jwt)) {
-            log.warn("🚫 BLACKLISTED token used for: {}", requestPath);
-            deleteTokenCookie(response);
+            log.warn("🚫 BLACKLISTED token used for: {} from IP: {}", requestPath, ipAddress);
+            // Принудительно очищаем куки и редиректим
+            deleteAllTokenCookies(response);
             handleUnauthorized(request, response, "Token blacklisted");
             return;
         }
 
+        // ПРОВЕРКА ВАЛИДНОСТИ ТОКЕНА
         String username = null;
         try {
             if (!jwtService.validateAccessToken(jwt)) {
-                log.warn("Invalid access token for: {}", requestPath);
+                log.warn("Invalid access token for: {} from IP: {}", requestPath, ipAddress);
+                deleteAllTokenCookies(response);
                 handleUnauthorized(request, response, "Invalid access token");
                 return;
             }
             username = jwtService.extractUserNameFromAccessToken(jwt);
+            log.debug("Token validated for user: {}", username);
         } catch (Exception e) {
-            log.warn("Invalid JWT token for: {}", requestPath);
-            deleteTokenCookie(response);
+            log.warn("Invalid JWT token for: {} from IP: {} - Error: {}", requestPath, ipAddress, e.getMessage());
+            deleteAllTokenCookies(response);
             handleUnauthorized(request, response, "Invalid token");
             return;
         }
@@ -98,11 +108,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 context.setAuthentication(authToken);
                 SecurityContextHolder.setContext(context);
-                log.debug("✅ Authenticated user: {} for: {}", username, requestPath);
+                log.debug("✅ Authenticated user: {} for: {} from IP: {}", username, requestPath, ipAddress);
 
             } catch (Exception e) {
-                log.warn("Authentication failed for user: {}", username);
-                deleteTokenCookie(response);
+                log.warn("Authentication failed for user: {} from IP: {}", username, ipAddress);
+                deleteAllTokenCookies(response);
                 handleUnauthorized(request, response, "Authentication failed");
                 return;
             }
@@ -114,7 +124,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private String extractTokenFromHeader(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
         if (StringUtils.isNotEmpty(authHeader) && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7);
+            String token = authHeader.substring(7);
+            log.debug("Token extracted from header, length: {}", token.length());
+            return token;
         }
         return null;
     }
@@ -124,23 +136,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             for (Cookie cookie : request.getCookies()) {
                 if ("accessToken".equals(cookie.getName())) {
                     String token = cookie.getValue();
-                    log.debug("Found token in cookie, length: {}", token.length());
+                    log.debug("Token extracted from cookie, length: {}", token.length());
                     return token;
                 }
             }
         }
+        log.debug("No accessToken cookie found");
         return null;
     }
 
-    private void deleteTokenCookie(HttpServletResponse response) {
-        Cookie cookie = new Cookie("accessToken", "");
-        cookie.setPath("/");
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
-        log.debug("Token cookie deleted");
+    // ОБНОВЛЕНО: Полная очистка всех кук
+    private void deleteAllTokenCookies(HttpServletResponse response) {
+        String[] cookieNames = {"accessToken", "refreshToken", "XSRF-TOKEN", "JSESSIONID"};
+
+        for (String cookieName : cookieNames) {
+            Cookie cookie = new Cookie(cookieName, "");
+            cookie.setPath("/");
+            cookie.setMaxAge(0);
+            cookie.setSecure(false); // Для localhost development
+            if ("accessToken".equals(cookieName) || "refreshToken".equals(cookieName)) {
+                cookie.setHttpOnly(true);
+            } else {
+                cookie.setHttpOnly(false);
+            }
+            response.addCookie(cookie);
+            log.debug("Cookie deleted: {}", cookieName);
+        }
+        log.info("All authentication cookies cleared");
     }
 
-    private void handleUnauthorized(HttpServletRequest request, HttpServletResponse response, String reason) throws IOException {
+    private void handleUnauthorized(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    String reason) throws IOException {
         String requestPath = request.getRequestURI();
 
         if (requestPath.startsWith("/api/")) {
@@ -149,13 +176,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.getWriter().write("{\"error\": \"Unauthorized\", \"reason\": \"" + reason + "\"}");
         } else {
             log.info("Redirecting to login from: {} - Reason: {}", requestPath, reason);
-            response.sendRedirect("/login");
+            // Принудительно очищаем куки перед редиректом
+            deleteAllTokenCookies(response);
+            response.sendRedirect("/login?logout=true");
         }
     }
 
     private boolean isPublicEndpoint(String path) {
         return path.equals("/") ||
                 path.startsWith("/auth/") ||
+                path.startsWith("/api/auth/") ||
                 path.startsWith("/css/") ||
                 path.startsWith("/js/") ||
                 path.startsWith("/webjars/") ||
@@ -165,5 +195,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 path.startsWith("/v3/api-docs/") ||
                 path.equals("/api/test/public") ||
                 path.contains("favicon.ico");
+    }
+
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xfHeader = request.getHeader("X-Forwarded-For");
+        if (xfHeader != null) {
+            return xfHeader.split(",")[0];
+        }
+        return request.getRemoteAddr();
     }
 }

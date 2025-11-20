@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Админка - JWT Auth Demo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .logout-btn {
+            color: #dc3545 !important;
+            border: none;
+            background: none;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s ease;
+        }
+        .logout-btn:hover {
+            color: #fff !important;
+            background-color: #dc3545;
+            border-radius: 0.375rem;
+        }
+    </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -14,7 +28,8 @@
             <a class="nav-link" href="/">Главная</a>
             <a class="nav-link" href="/dashboard">Дашборд</a>
             <a class="nav-link active" href="/admin">Админка</a>
-            <button class="nav-link btn btn-link text-light text-decoration-none" onclick="logout()" style="border: none; background: none;">
+            <button class="nav-link btn btn-link text-light text-decoration-none logout-btn"
+                    onclick="logout()">
                 Выйти
             </button>
         </div>
@@ -76,16 +91,59 @@
 </div>
 
 <script>
-    function logout() {
-        // Очищаем все хранилища
-        localStorage.clear();
-        sessionStorage.clear();
+    async function logout() {
+        try {
+            console.log('Starting logout process...');
 
-        // Удаляем cookie token
-        document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            // Отправляем запрос на сервер для выхода
+            const response = await fetch('/auth/logout', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-XSRF-TOKEN': getCsrfToken()
+                }
+            });
 
-        // Перенаправляем на серверный logout
-        window.location.href = '/logout';
+            console.log('Logout response status:', response.status);
+
+            // Всегда очищаем куки на клиенте (fallback)
+            clearAllCookies();
+
+            if (response.ok) {
+                console.log('Logout successful, redirecting...');
+                // Перенаправляем на главную страницу
+                window.location.href = '/?logout=true';
+            } else {
+                console.warn('Logout request failed, but clearing cookies locally');
+                window.location.href = '/?logout=true';
+            }
+
+        } catch (error) {
+            console.error('Logout error:', error);
+            // Fallback: очищаем куки и редиректим
+            clearAllCookies();
+            window.location.href = '/?logout=true';
+        }
+    }
+
+    function clearAllCookies() {
+        // Очищаем все токен-куки
+        const cookies = ['accessToken', 'refreshToken', 'XSRF-TOKEN', 'JSESSIONID'];
+        cookies.forEach(cookieName => {
+            document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        });
+        console.log('All cookies cleared locally');
+    }
+
+    function getCsrfToken() {
+        // Получаем CSRF токен из куки
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; XSRF-TOKEN=`);
+        if (parts.length === 2) {
+            return parts.pop().split(';').shift();
+        }
+        return '';
     }
 </script>
 
